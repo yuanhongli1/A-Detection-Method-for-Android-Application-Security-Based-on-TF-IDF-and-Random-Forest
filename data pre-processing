@@ -1,0 +1,600 @@
+#!/usr/bin/python3
+# -*- coding: UTF-8 -*-
+
+
+import tkinter as tk
+from tkinter import messagebox
+from tkinter import Text
+from tkinter import filedialog
+import tkinter.filedialog
+from tkinter import ttk
+import subprocess
+import os.path
+import urllib.request
+#import requests
+import re
+import threading
+import sqlite3
+from tempfile import TemporaryDirectory
+import math
+from tkinter import ttk
+
+version='1.0'
+contactUs='1779864536@qq.com'
+
+currentfile=None
+current_directory = None
+root = tk.Tk()
+root.title('Data processing')
+if os.path.exists('icon.ico'):
+    root.iconbitmap('icon.ico')
+root.maxsize(800, 600)
+root.minsize(300, 240)
+root.resizable(0, 0)
+aboutText='版本：%s\n联系我们：%s\n'%(version,contactUs)
+idfs=[]
+
+frame = tk.Frame(root, width=512, height=512)
+label = tk.Label(root,text='已打开文件 : '+str(currentfile),bd=1,relief=tk.SUNKEN,anchor=tk.W)  
+label.pack(side=tk.BOTTOM,fill=tk.X)
+
+def get_apks(number=3,size='50MB',savePath=''):
+    for widget in frame.winfo_children():
+        widget.destroy()
+    scroll = tk.Scrollbar(frame)
+    scroll.pack(side=tk.RIGHT,fill=tk.Y)
+    out = Text(frame)
+    out.pack()
+    scroll.config(command=out.yview)
+    out.config(yscrollcommand=scroll.set)
+    out.config(state=tk.NORMAL)
+    out.insert("end", '*****读取爬取设置：\n爬取数量：%s\n大小限制：%s\n保存路径：%s\n'%(number,size,savePath))
+    out.config(state=tk.DISABLED)
+    page=1
+    num=0
+    pattern = re.compile(r'<a href="/apk/(.*?)">\s+<div class="alllist_app">',re.S) 
+    div=re.compile(r'<div class="app_left_list">(.*?)<div class="app_right">',re.S) 
+    sizePattern=re.compile(r'<dt>大小</dt><dd> (.*?) <meta',re.S)
+    namePattern=re.compile(r'<span class="title" itemprop="name">(.*?)</span>',re.S)
+    while num<number:
+        out.config(state=tk.NORMAL)
+        out.insert("end", '*****开始爬取...\n')
+        out.config(state=tk.DISABLED)
+        url='https://coolapk.com/apk?p=%d'%(page)
+        res_one = urllib.request.urlopen(url)
+        html_one = res_one.read().decode('utf-8')
+        res_one.close()
+        mainText=div.findall(html_one)[0]
+        #print(mainText)
+        res_urllist=pattern.findall(mainText)
+        #print(res_urllist)
+
+        for i in res_urllist:
+            wdjapkurl = 'https://www.wandoujia.com/apps/%s'%(i) 
+            #print(wdjapkurl)
+            res_one = urllib.request.urlopen(wdjapkurl)
+            html_one = res_one.read().decode('utf-8')
+            res_one.close()
+
+            apkName=namePattern.findall(html_one)[0]
+            print(apkName)
+
+            apkSize=sizePattern.findall(html_one)[0]
+            print(apkSize)
+            out.config(state=tk.NORMAL)
+            #out.delete(6.0, tk.END)
+            out.insert("end", '\n\r\t%s\n'%(apkName))
+            out.insert("end", '\r\t%s\n'%(apkSize))
+            out.insert("end", '\r\t进度:(%d/%d)\n\n'%(num+1,number))
+            out.config(state=tk.DISABLED)
+            sizeLimitNum=float(size[:-2])
+            sizeLimitUnit=size[-2:]
+            sizeNum=float(apkSize[:-2])
+            sizeUnit=apkSize[-2:]
+
+            if sizeUnit == sizeLimitUnit:
+                if sizeNum>sizeLimitNum:
+                    continue
+            else:
+
+                if sizeLimitUnit == 'KB':
+
+                    if sizeUnit == 'GB':
+                        continue
+                    if sizeUnit == 'MB':
+                        continue
+                if sizeLimitUnit == 'MB':
+                    if sizeUnit == 'GB':
+                        continue
+            res_url='https://www.wandoujia.com/apps/%s/download/dot?ch=detail_normal_dl'%(i)
+            r = requests.get(res_url,stream=True)
+            out.config(state=tk.NORMAL)
+            out.insert("end", '*****下载中...\n')
+            out.config(state=tk.DISABLED)
+            apkfile=os.path.join(savePath,'%s_%s.apk'%(apkName,i))
+            with open(apkfile, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=32):
+                    f.write(chunk)
+            r.close()
+            num+=1
+            if num==number:
+                break
+        page+=1
+    out.config(state=tk.NORMAL)
+    out.insert("end", '*****The crawl is complete！*****\n')
+    out.config(state=tk.DISABLED)
+
+def get_permission(number=3,savepath='.'):
+    for widget in frame.winfo_children():
+        widget.destroy()
+    scroll = tk.Scrollbar(frame)
+    scroll.pack(side=tk.RIGHT,fill=tk.Y)
+    out = Text(frame)
+    out.pack()
+    scroll.config(command=out.yview)
+    out.config(yscrollcommand=scroll.set)
+    out.config(state=tk.NORMAL)
+    out.insert("end", '*****Climb parameter Settings：\n numbers：%s\nsave path：%s\n'%(number,os.path.join(savepath,'apk_permissions.db')))
+    out.config(state=tk.DISABLED)
+    data_base=sqlite3.connect(os.path.join(savepath,'apk_permissions.db'))
+    cursor=data_base.cursor()
+    cursor.execute('create table if not exists permissions(apk_name text,package_name text,package_permission text)')
+    data_base.commit()
+
+    page=1
+    num=0
+
+    div=re.compile(r'<div class="app_left_list">(.*?)<div class="app_right">',re.S) 
+    pattern = re.compile(r'<a href="/apk/(.*?)">\s+<div class="alllist_app">',re.S) 
+    per = re.compile(r'· (.*?)<br/>',re.S) 
+    namepattern=re.compile(r'<p class="detail_app_title">(.*?)<span',re.S)
+
+    while num<number:
+        url='https://coolapk.com/apk?p=%d'%(page)
+        res_one = urllib.request.urlopen(url)
+        html_one = res_one.read().decode('utf-8')
+        res_one.close()
+        mainText=div.findall(html_one)[0]
+        res_urllist=pattern.findall(mainText)
+        for i in res_urllist:
+            apkurl='https://coolapk.com/apk/%s'%(i)
+            raw = urllib.request.urlopen(apkurl).read().decode('utf-8')
+            apkname=namepattern.findall(raw)[0]
+            permissions=per.findall(raw)
+            out.config(state=tk.NORMAL)
+            #out.delete(6.0, tk.END)
+            out.insert("end", '\n\r\t%s\n'%(apkname))
+            out.insert("end", '\r\t%s\n'%(permissions))
+            out.insert("end", '\r\t进度:(%d/%d)\n\n'%(num+1,number))
+            out.config(state=tk.DISABLED)
+            for j in permissions:
+                cursor.execute("select * from permissions where package_name='%s' and package_permission='%s'"%(i,j))
+                result=cursor.fetchall()
+                if result:
+                    continue
+                else:
+                    insertsqlstr = "insert into permissions (apk_name,package_name,package_permission) VALUES ('%s','%s','%s')"%(apkname,i,j)
+                    print(insertsqlstr)
+                    cursor.execute(insertsqlstr)
+                    data_base.commit()
+            num+=1
+            if num==number:
+                break
+
+        page+=1
+    out.config(state=tk.NORMAL)
+    out.insert("end", '*****The crawl is complete！*****\n')
+    out.config(state=tk.DISABLED)
+
+class GetApkDialog(tk.Toplevel):
+    def __init__(self):
+        super().__init__()
+        self.title('设置爬取信息')
+        
+        # 弹窗界面
+        self.setup_UI()
+        self.wm_attributes('-topmost',1)
+        
+        
+    def setup_UI(self):
+        # 第一行（两列）
+        row1 = tk.Frame(self)
+        row1.pack(fill="x")
+        self.cmb = ttk.Combobox(row1,width=6)
+        self.cmb['value'] = ('MB','KB','GB')
+        self.cmb.current(0)
+        tk.Label(row1, text='apk大小：', width=8).pack(side=tk.LEFT)
+        self.cmb.pack(side=tk.RIGHT)
+        self.apkSize = tk.IntVar()
+        tk.Entry(row1, textvariable=self.apkSize, width=20).pack(side=tk.LEFT)
+        
+        # 第二行
+        row2 = tk.Frame(self)
+        row2.pack(fill="x", ipadx=1, ipady=1)
+        tk.Label(row2, text='爬取数量：', width=8).pack(side=tk.LEFT)
+        self.apkNum = tk.IntVar()
+        tk.Entry(row2, textvariable=self.apkNum, width=20).pack(side=tk.LEFT)
+
+        # 第三行
+        row3 = tk.Frame(self)
+        row3.pack(fill="x", ipadx=1, ipady=1)
+        tk.Label(row3, text='保存路径：', width=8).pack(side=tk.LEFT)
+        self.apkSavePath = tk.StringVar()
+        tk.Entry(row3, textvariable=self.apkSavePath,state=tk.DISABLED, width=20).pack(side=tk.LEFT)
+        tk.Button(row3, text="选择路径", command=self.selectpath).pack(side=tk.RIGHT)
+        
+        # 第四行
+        row4 = tk.Frame(self)
+        row4.pack(fill="x")
+        tk.Button(row4, text="取消", command=self.cancel).pack(side=tk.RIGHT)
+        tk.Button(row4, text="开始", command=self.ok).pack(side=tk.RIGHT)
+        
+    def selectpath(self,event=None):
+        self.wm_attributes('-topmost',0)
+        current_directory = filedialog.askdirectory()
+        self.wm_attributes('-topmost',1)
+        self.apkSavePath.set(current_directory)
+        
+
+    def ok(self):
+        if self.apkNum.get() <=0:
+            tk.messagebox.showinfo('信息错误','错误：爬取数量不大于0')
+            return
+        if self.apkSize.get() <=0:
+            tk.messagebox.showinfo('信息错误','错误：安装包大小不大于0')
+            return
+        if self.apkSavePath.get() =='' or self.apkSavePath.get() is None:
+            tk.messagebox.showinfo('信息错误','错误：保存路径为空')
+            return
+        self.apkinfo = [str(self.apkSize.get())+self.cmb.get(), self.apkNum.get(), self.apkSavePath.get()] # 设置数据
+        self.destroy() # 销毁窗口
+        
+    def cancel(self):
+        self.apkinfo = None # 空！
+        self.destroy()
+
+class GetApkPermissionDialog(tk.Toplevel):
+    def __init__(self):
+        super().__init__()
+        self.title('设置爬取信息')
+        
+        # 弹窗界面
+        self.setup_UI()
+        self.wm_attributes('-topmost',1)
+        
+        
+    def setup_UI(self):
+        
+        # 第一行
+        row1 = tk.Frame(self)
+        row1.pack(fill="x", ipadx=1, ipady=1)
+        tk.Label(row1, text='爬取数量：', width=8).pack(side=tk.LEFT)
+        self.apkNum = tk.IntVar()
+        tk.Entry(row1, textvariable=self.apkNum, width=20).pack(side=tk.LEFT)
+
+        # 第二行
+        row2 = tk.Frame(self)
+        row2.pack(fill="x", ipadx=1, ipady=1)
+        tk.Label(row2, text='保存路径：', width=8).pack(side=tk.LEFT)
+        self.apkSavePath = tk.StringVar()
+        tk.Entry(row2, textvariable=self.apkSavePath,state=tk.DISABLED, width=20).pack(side=tk.LEFT)
+        tk.Button(row2, text="选择路径", command=self.selectpath).pack(side=tk.RIGHT)
+        
+        # 第三行
+        row3 = tk.Frame(self)
+        row3.pack(fill="x")
+        tk.Button(row3, text="取消", command=self.cancel).pack(side=tk.RIGHT)
+        tk.Button(row3, text="开始", command=self.ok).pack(side=tk.RIGHT)
+        
+    def selectpath(self,event=None):
+        self.wm_attributes('-topmost',0)
+        current_directory = filedialog.askdirectory()
+        self.wm_attributes('-topmost',1)
+        self.apkSavePath.set(current_directory)
+        
+
+    def ok(self):
+        if self.apkNum.get() <=0:
+            tk.messagebox.showinfo('信息错误','错误：爬取数量不大于0')
+            return
+        if self.apkSavePath.get() =='' or self.apkSavePath.get() is None:
+            tk.messagebox.showinfo('信息错误','错误：保存路径为空')
+            return
+        self.apkinfo = [self.apkNum.get(), self.apkSavePath.get()] # 设置数据
+        self.destroy() # 销毁窗口
+        
+    def cancel(self):
+        self.apkinfo = None # 空！
+        self.destroy()
+
+class DecodeApkPermissionDialog(tk.Toplevel):
+    def __init__(self):
+        super().__init__()
+        self.title('设置解析安装包信息')
+        
+        # 弹窗界面
+        self.setup_UI()
+        self.wm_attributes('-topmost',1)
+        
+        
+    def setup_UI(self):
+        
+        # 第一行
+        row1 = tk.Frame(self)
+        row1.pack(fill="x", ipadx=1, ipady=1)
+        tk.Label(row1, text='安装包路径：', width=9).pack(side=tk.LEFT)
+        self.apkSavePath = tk.StringVar()
+        tk.Entry(row1, textvariable=self.apkSavePath,state=tk.DISABLED, width=20).pack(side=tk.LEFT)
+        tk.Button(row1, text="选择路径", command=self.selectpath1).pack(side=tk.RIGHT)
+
+        # 第二行
+        row2 = tk.Frame(self)
+        row2.pack(fill="x", ipadx=1, ipady=1)
+        tk.Label(row2, text='保存路径：', width=9).pack(side=tk.LEFT)
+        self.permissionSavePath = tk.StringVar()
+        tk.Entry(row2, textvariable=self.permissionSavePath,state=tk.DISABLED, width=20).pack(side=tk.LEFT)
+        tk.Button(row2, text="选择路径", command=self.selectpath2).pack(side=tk.RIGHT)
+        
+        # 第三行
+        row3 = tk.Frame(self)
+        row3.pack(fill="x")
+        tk.Button(row3, text="取消", command=self.cancel).pack(side=tk.RIGHT)
+        tk.Button(row3, text="开始", command=self.ok).pack(side=tk.RIGHT)
+        
+    def selectpath1(self,event=None):
+        self.wm_attributes('-topmost',0)
+        current_directory = filedialog.askdirectory(title='选择安装包(.apk文件)所在文件夹')
+        self.wm_attributes('-topmost',1)
+        self.apkSavePath.set(current_directory)
+
+    def selectpath2(self,event=None):
+        self.wm_attributes('-topmost',0)
+        current_directory = filedialog.askdirectory(title='选择权限数据库文件保存路径')
+        self.wm_attributes('-topmost',1)
+        self.permissionSavePath.set(current_directory)
+        
+
+    def ok(self):
+        if self.apkSavePath.get() =='' or self.apkSavePath.get() is None:
+            tk.messagebox.showinfo('信息错误','错误：安装包路径为空')
+            return
+        if self.permissionSavePath.get() =='' or self.apkSavePath.get() is None:
+            tk.messagebox.showinfo('信息错误','错误：数据库路径为空')
+            return
+        self.apkinfo = [self.apkSavePath.get(), self.permissionSavePath.get()] # 设置数据
+        self.destroy() # 销毁窗口
+        
+    def cancel(self):
+        self.apkinfo = None # 空！
+        self.destroy()
+
+def getPermissionsByDecodeApk(apkDir='.',dbSaveDir='.'):
+    for widget in frame.winfo_children():
+        widget.destroy()
+    scroll = tk.Scrollbar(frame)
+    scroll.pack(side=tk.RIGHT,fill=tk.Y)
+    out = Text(frame)
+    out.pack()
+    scroll.config(command=out.yview)
+    out.config(yscrollcommand=scroll.set)
+    out.config(state=tk.NORMAL)
+    out.insert("end", '*****读取解析设置：\n安装包目录：%s\n权限数据库文件保存路径：%s\n\n*****权限提取中...\n'%(apkDir,os.path.join(dbSaveDir,'apk_permissions.db')))
+    out.config(state=tk.DISABLED)
+    data_base=sqlite3.connect(os.path.join(dbSaveDir,'apk_permissions.db'))
+    cursor=data_base.cursor()
+    cursor.execute('create table if not exists permissions(apk_name text,package_name text,package_permission text)')
+    data_base.commit()
+    files=os.listdir(apkDir)
+    apks=[os.path.join(apkDir,x) for x in files if x.endswith('.')]
+    name = re.compile(r'package="(.*?)"',re.S) 
+    per = re.compile(r'<uses-permission android:name="android.permission.(.*?)"/>',re.S) 
+    count=len(apks)
+    for index,i in enumerate(apks):
+        out.config(state=tk.NORMAL)
+        out.insert("end", '\n\r\t反编译 %s ...\n'%(i))
+        out.config(state=tk.DISABLED)
+        with TemporaryDirectory() as dirname:
+            try:
+                command='java -jar %s d %s -f -o %s'%('apktool_2.4.0.jar',i,dirname)
+                a=subprocess.check_output(command)
+                out.config(state=tk.NORMAL)
+                #out.delete(6.0, tk.END)
+                out.insert("end", '\r\t%s\n'%(a.decode('GBK')))
+                out.config(state=tk.DISABLED)
+
+                xmlpath=os.path.join(dirname,'AndroidManifest.xml')
+                f=open(xmlpath,encoding='utf-8')
+                xml=f.read()
+                package_name=name.findall(xml)[0]
+                permissions=per.findall(xml)
+                out.config(state=tk.NORMAL)
+                #out.delete(6.0, tk.END)
+                out.insert("end", '\n\r\t反编译完成 %s \n'%(package_name))
+                out.insert("end", '\r\t权限:%s\n'%(permissions))
+                out.insert("end", '\r\t进度:(%d/%d)\n\n'%(index+1,count))
+                out.config(state=tk.DISABLED)
+                for j in permissions:
+                    cursor.execute("select * from permissions where package_name='%s'  and package_permission='%s'"%(package_name,j))
+                    result=cursor.fetchall()
+                    if result:
+                        continue
+                    else:
+                        insertsqlstr = "insert into permissions (apk_name,package_name,package_permission) VALUES ('%s','%s','%s')"%('unknown',package_name,j)
+                        cursor.execute(insertsqlstr)
+                        data_base.commit()
+            except:
+                f.close()
+                out.config(state=tk.NORMAL)
+                out.insert("end", '\n\r\t失败%s ...\n'%(i))
+                out.config(state=tk.DISABLED)
+            f.close()
+    out.config(state=tk.NORMAL)
+    out.insert("end", '*****提取完成！*****\n')
+    out.config(state=tk.DISABLED)
+    cursor.execute('select * from permissions  limit 10')
+    result=cursor.fetchall()
+    print(result)
+
+def callback():
+    print("~被调用了~")
+
+def clear():
+    for widget in frame.winfo_children():
+        widget.destroy()
+
+def openfile():
+    global currentfile
+    currentfile = tkinter.filedialog.askopenfilename(filetypes=[("apk-permissions数据库文件", ".db")])
+    if currentfile is '':
+        currentfile = None
+        return
+    label.config(text='已打开文件 : '+str(currentfile))
+
+def saveas():
+    if idfs:
+        savefile = tkinter.filedialog.asksaveasfilename(filetypes=[("csv格式", ".csv")])
+        if savefile is '':
+            return
+        if not savefile.endswith('.csv'):
+            savefile+='.csv'
+        with open(savefile,'w') as f:
+            f.write("apk-name,apk-Permission-Number,AVOA\n")
+            for i in idfs:
+                f.write(','.join([str(x) for x in i]))
+                f.write('\n')
+        label.config(text='已保存文件 : '+str(savefile))
+    else:
+        tk.messagebox.showinfo('无待保存数据','请先进行TF-IDF值计算')
+        return
+
+def exitApk():
+    root.destroy()
+
+def getAppsOnlyPermission():
+    inputDialog = GetApkPermissionDialog()
+    root.wait_window(inputDialog)
+    print(inputDialog.apkinfo)
+    if inputDialog.apkinfo is None:
+        return
+    global current_directory
+    current_directory = inputDialog.apkinfo[1]
+    th=threading.Thread(target=get_permission,args=(inputDialog.apkinfo[0],inputDialog.apkinfo[1],))
+    th.setDaemon(True)
+    th.start()
+    pass
+
+def getApps():
+    inputDialog = GetApkDialog()
+    root.wait_window(inputDialog)
+    print(inputDialog.apkinfo)
+    if inputDialog.apkinfo is None:
+        return
+    global current_directory
+    current_directory = inputDialog.apkinfo[2]
+    print(current_directory)
+    th=threading.Thread(target=get_apks,args=(inputDialog.apkinfo[1],inputDialog.apkinfo[0],inputDialog.apkinfo[2],))
+    th.setDaemon(True)
+    th.start()
+    pass
+
+def getPermission():
+    inputDialog = DecodeApkPermissionDialog()
+    root.wait_window(inputDialog)
+    print(inputDialog.apkinfo)
+    if inputDialog.apkinfo is None:
+        return
+    th=threading.Thread(target=getPermissionsByDecodeApk,args=(inputDialog.apkinfo[0],inputDialog.apkinfo[1],))
+    th.setDaemon(True)
+    th.start()
+    pass
+
+def TFfun():
+    global currentfile
+    if currentfile is None:
+        tk.messagebox.showinfo('未找到已打开权限数据库文件','请先打开一个权限数据库文件(.db)')
+        return
+    data_base=sqlite3.connect(currentfile)
+    cursor=data_base.cursor()
+    cursor.execute('create table if not exists permissions(apk_name text,package_name text,package_permission text)')
+    data_base.commit()
+    countsqlstr = "select package_permission,count(*) as count from permissions group by package_permission"
+    cursor.execute(countsqlstr)
+    result=cursor.fetchall()
+    pfssqlstr = "select package_name,count(*) as count from permissions group by package_name"
+    cursor.execute(pfssqlstr)
+    pfs=dict(cursor.fetchall())
+    pfoa1= len(pfs)
+    permissions=dict(result)
+
+    sqlstr = "select package_name,package_permission from permissions"
+    cursor.execute(sqlstr)
+    data=cursor.fetchall()
+    apppers={}
+    for i in data:
+        if i[0] in apppers.keys():
+            apppers[i[0]].append(i[1])        
+        else:
+            apppers[i[0]]=[]
+            apppers[i[0]].append(i[1])
+    idfs.clear()
+    for k,v in apppers.items():
+        pf=1/pfs[k]
+        avoa=0
+        for j in v:
+            pfoa=math.log10(pfoa1/permissions[j])
+            pv=1-pf*pfoa
+            avoa+=pv
+        idfs.append([k,pfs[k],avoa])
+    clear()
+    scroll = tk.Scrollbar(frame)
+    scroll.pack(side=tk.RIGHT,fill=tk.Y)
+    columns = ("apk-name", "apk-Permission-Number","AVOA")
+    treeview = ttk.Treeview(frame, height=18, show="headings", columns=columns)
+    treeview.heading("apk-name", text="apk-name") 
+    treeview.heading("apk-Permission-Number", text="apk-Permission-Number")
+    treeview.heading("AVOA", text="AVOA")
+    treeview.pack(side=tk.LEFT, fill=tk.BOTH)
+    for i in range(len(idfs)):
+        treeview.insert('', i, values=(idfs[i]))
+    scroll.config(command=treeview.yview)
+    treeview.config(yscrollcommand=scroll.set)
+
+
+def analysis():
+    print('analysis()')
+    pass
+
+def about():
+    tk.messagebox.showinfo('关于 Android APP权限检测系统',aboutText)
+    pass
+
+
+menubar = tk.Menu(root)
+
+filemenu = tk.Menu(menubar, tearoff=False)
+filemenu.add_command(label="打开", command=openfile)
+filemenu.add_command(label="另保存", command=saveas)
+filemenu.add_separator()
+filemenu.add_command(label="退出", command=exitApk)
+menubar.add_cascade(label="文件", menu=filemenu)
+
+getAppsMenu = tk.Menu(menubar, tearoff=False)
+getAppsMenu.add_command(label="Extract the permissions", command=getAppsOnlyPermission)
+getAppsMenu.add_command(label="apk安装包", command=getApps)
+menubar.add_cascade(label="Crawl APK", menu=getAppsMenu)
+
+getPermissionMenu = tk.Menu(menubar, tearoff=False)
+getPermissionMenu.add_command(label="Permission提取", command=getPermission)
+menubar.add_cascade(label="Permission提取", menu=getPermissionMenu)
+
+menubar.add_command(label="TF-IDF value calculation", command=TFfun)
+
+#menubar.add_command(label="分析", command=analysis)
+
+menubar.add_command(label="关于", command=about)
+
+
+frame.pack()
+root.config(menu=menubar)
+
+root.mainloop()
